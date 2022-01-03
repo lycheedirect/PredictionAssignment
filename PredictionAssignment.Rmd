@@ -1,0 +1,118 @@
+---
+title: "PredictionAssignment"
+date: "03/01/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, the objective is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data Source
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har 
+
+```{r, echo=FALSE}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(rattle)
+library(randomForest)
+library(RColorBrewer)
+
+require(data.table)
+require(dplyr)
+require(caret)
+```
+
+## Data Loading and Processing 
+Let's read in the data and perform processing.  
+```{r, echo=TRUE}
+traindata <- read.csv("C:/Users/ckblu/Desktop/Coursera/Data Science/pml-training.csv", header=T)
+validation <- read.csv("C:/Users/ckblu/Desktop/Coursera/Data Science/pml-testing.csv", header=T)
+
+# Setting random seed
+set.seed(55649)
+
+# Partition into training and test sets. Use 70% for training, the rest for testing. 
+training_sample <- createDataPartition(traindata$classe, p=0.7, list=FALSE)
+train_set <- traindata[training_sample, ]
+test_set  <- traindata[-training_sample, ]
+dim(train_set)
+dim(test_set)
+```
+
+Next we eliminate the variables with near zero variance. Also, we identify variables where values are primarily NA's, with a threshold of 95%. 
+```{r, echo=TRUE}
+nrzero_set <- nearZeroVar(train_set)
+train_set2 <- train_set[, -nrzero_set]
+test_set2 <- test_set[, -nrzero_set]
+dim(train_set2)
+dim(test_set2)
+
+na_list <- sapply(train_set2, function(x) mean(is.na(x))) > 0.95
+
+train_set3 <- train_set2[ , na_list == FALSE]
+test_set3  <- test_set2[ , na_list == FALSE]
+dim(train_set3)
+dim(test_set3)
+
+# Eliminate the first 5 variables as it is not useful for prediction
+train_set_good <- train_set3[ , -(1:5)]
+test_set_good  <- test_set3[ , -(1:5)]
+dim(train_set_good)
+dim(test_set_good)
+```
+
+## Prediction MOdels 
+Next we fit various prediction models to the data, firstly a Random Forest model and secondly, a Generalized Boosted Model. 
+```{r, echo=TRUE}
+# Setting the trainControl parameters for model fitting 
+control_rf <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+fit_rf <- train(classe ~ ., data = train_set_good, method = "rf", trControl = control_rf, verbose = FALSE)
+fit_rf$finalModel
+```
+
+Output the predictions of the Random Forest model and the confusion matrix:
+```{r, echo=TRUE}
+predict_rf <- predict(fit_rf, newdata = test_set_good)
+confmat_rf <- confusionMatrix(predict_rf, as.factor(test_set_good$classe))
+confmat_rf
+```
+The confusion matrix indicates predictive accuracy of the Random Forest model to be 99.85% - fantastic! 
+
+Next, output the predictions of the Generalized Boosted Model and the confusion matrix:
+```{r, echo=TRUE}
+# Once again set same seed 
+set.seed(55649)
+fit_gbm <- train(classe ~.,  data = train_set_good, method = "gbm", trControl = control_rf, verbose = FALSE)
+fit_gbm$finalModel
+```
+
+```{r, echo=TRUE}
+predict_gbm <- predict(fit_gbm, newdata = test_set_good)
+confmat_gbm <- confusionMatrix(predict_gbm, as.factor(test_set_good$classe))
+confmat_gbm
+```
+The confusion matrix indicates predictive accuracy of the Random Forest model to be 98.84%. The accuracy is very similar to the Random Forest model. However, the Random Forest model fairs just a bit better.  
+
+## Prediction of 20 Different Test Cases 
+We will use the Random Forest Model to make predictions of the 20 data points, as follows:
+```{r, echo=TRUE}
+predict_dataquiz <- predict(fit_rf, newdata = validation)
+predict_dataquiz
+```
+
